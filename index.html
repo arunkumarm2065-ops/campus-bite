@@ -1,0 +1,1156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CampusBite — Canteen Pre-Order</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+
+  <style>
+    body { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    .glass { background: rgba(255,255,255,.82); backdrop-filter: blur(14px); }
+    .modal-backdrop { background: rgba(15,23,42,.55); backdrop-filter: blur(5px); }
+    .pop { animation: pop .35s ease-out; }
+    @keyframes pop { from { transform: scale(.9); opacity:0 } to { transform: scale(1); opacity:1 } }
+    .pulse-dot { animation: pulse 1.6s infinite; }
+    @keyframes pulse { 50% { opacity:.45; transform:scale(.85) } }
+    .qr { background: repeating-linear-gradient(90deg,#111 0 4px,#fff 4px 8px), repeating-linear-gradient(0deg,transparent 0 5px,#111 5px 8px); background-blend-mode:multiply; }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-900 min-h-screen">
+  <div id="loginView" class="fixed inset-0 z-[100] bg-slate-950 grid place-items-center p-4">
+    <div class="w-full max-w-md bg-white rounded-3xl p-6 md:p-8 shadow-2xl">
+      <div class="flex items-center gap-3 mb-6">
+        <div class="w-12 h-12 rounded-2xl bg-orange-500 text-white grid place-items-center">
+          <i data-lucide="utensils" class="w-6 h-6"></i>
+        </div>
+        <div><h1 class="font-black text-2xl">Campus<span class="text-orange-500">Bite</span></h1><p class="text-xs text-slate-500">Canteen Management Portal</p></div>
+      </div>
+      <div class="flex bg-slate-100 rounded-xl p-1 mb-5">
+        <button type="button" id="loginStudent" onclick="selectLoginRole('student',this)" class="flex-1 py-3 rounded-lg bg-white shadow-sm font-bold text-sm">🎓 Student</button>
+        <button type="button" id="loginOwner" onclick="selectLoginRole('owner',this)" class="flex-1 py-3 rounded-lg font-bold text-sm text-slate-500">🏪 Shop Owner</button>
+        <button type="button" id="loginAdmin" onclick="selectLoginRole('admin',this)" class="flex-1 py-3 rounded-lg font-bold text-sm text-slate-500">🛡️ Admin</button>
+      </div>
+      <p class="text-center text-xs text-slate-500 mb-4">Choose your portal above before entering your login details.</p>
+      <div id="loginForm">
+        <label class="text-sm font-bold">Username / ID</label>
+        <input id="loginUser" class="w-full mt-1 mb-3 border rounded-xl px-3 py-3 outline-none focus:ring-2 focus:ring-orange-200" placeholder="Enter your ID">
+        <label class="text-sm font-bold">Password</label>
+        <input id="loginPass" type="password" class="w-full mt-1 border rounded-xl px-3 py-3 outline-none focus:ring-2 focus:ring-orange-200" placeholder="Enter password">
+        <button id="loginBtn" type="button" class="w-full mt-4 py-3.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-black">Continue as Student Login</button>
+        <p id="loginError" class="hidden mt-3 text-center text-sm text-red-600 font-semibold"></p>
+      </div>
+      <div class="mt-5 p-3 rounded-xl bg-slate-50 text-xs text-slate-500 text-center">
+        Select your portal above and sign in with your campus account.
+      </div>
+    </div>
+  </div>
+
+  <header class="sticky top-0 z-40 glass border-b border-slate-200">
+    <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-2xl bg-orange-500 text-white grid place-items-center shadow-lg shadow-orange-200">
+          <i data-lucide="utensils" class="w-5 h-5"></i>
+        </div>
+        <div>
+          <h1 class="font-black text-lg leading-none">Campus<span class="text-orange-500">Bite</span></h1>
+          <div class="flex items-center gap-2 mt-1 text-xs">
+            <span class="inline-flex items-center gap-1 text-emerald-700 font-semibold"><span class="w-2 h-2 rounded-full bg-emerald-500 pulse-dot"></span> Canteen Open</span>
+            <span class="text-slate-400">•</span>
+            <span>Break ends in <b id="countdown">39:59</b></span>
+          </div>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <button id="studentTab" class="px-3 py-2 rounded-xl bg-orange-50 text-orange-600 font-bold text-sm">Student</button>
+        <button id="vendorTab" class="px-3 py-2 rounded-xl text-slate-500 font-bold text-sm">Kitchen</button>
+        <button id="foodMenuTab" class="px-3 py-2 rounded-xl text-slate-500 font-bold text-sm">Food Menu</button>
+        <button id="adminTab" class="px-3 py-2 rounded-xl text-slate-500 font-bold text-sm">Shop Admin</button>
+        <button id="reportTab" class="hidden px-3 py-2 rounded-xl text-slate-500 font-bold text-sm">Help / Report</button>
+        <button id="notificationBtn" class="relative hidden w-10 h-10 rounded-xl bg-slate-100 text-slate-700 items-center justify-center">
+          <i data-lucide="bell" class="w-5 h-5"></i><span id="notificationBadge" class="hidden absolute -top-1 -right-1 min-w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-black grid place-items-center">0</span>
+        </button>
+        <span id="roleBadge" class="hidden md:inline-flex px-3 py-2 rounded-xl bg-slate-100 text-slate-600 font-bold text-xs"></span>
+        <button id="logoutBtn" class="hidden px-3 py-2 rounded-xl bg-slate-100 text-slate-700 font-bold text-sm">Logout</button>
+        <button id="cartBtn" class="relative w-11 h-11 rounded-xl bg-slate-900 text-white grid place-items-center">
+          <i data-lucide="shopping-bag" class="w-5 h-5"></i>
+          <span id="cartCount" class="absolute -top-1 -right-1 min-w-5 h-5 px-1 rounded-full bg-orange-500 text-white text-[10px] font-black grid place-items-center">0</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <div id="notificationPanel" class="hidden fixed right-4 top-20 z-[80] w-[calc(100%-2rem)] max-w-sm bg-white border rounded-2xl shadow-2xl overflow-hidden">
+    <div class="p-4 border-b flex items-center justify-between"><div><b>Notifications</b><p class="text-xs text-slate-500">Order updates</p></div><button id="clearNotifications" class="text-xs font-bold text-orange-600">Clear</button></div>
+    <div id="notificationList" class="max-h-80 overflow-y-auto"></div>
+  </div>
+
+  <main id="studentView" class="max-w-6xl mx-auto px-4 py-6">
+    <section class="rounded-3xl bg-slate-900 text-white p-6 md:p-8 overflow-hidden relative">
+      <div class="absolute -right-16 -top-16 w-48 h-48 rounded-full bg-orange-500/20"></div>
+      <div class="relative max-w-2xl">
+        <span class="inline-flex items-center gap-2 text-orange-300 text-xs font-bold uppercase tracking-wider"><i data-lucide="zap" class="w-4 h-4"></i> Skip the queue</span>
+        <h2 class="text-3xl md:text-5xl font-black mt-2 leading-tight">Order now.<br><span class="text-orange-400">Pick up fast.</span></h2>
+        <p class="text-slate-300 mt-3 max-w-xl">Pre-order lunch before the rush. Get a digital token and collect from the dedicated express counter.</p>
+      </div>
+    </section>
+    <section class="mt-4 bg-white border rounded-2xl p-4">
+      <div class="flex items-center justify-between mb-3">
+        <div><h3 class="font-black">CampusBite Service Times</h3><p class="text-xs text-slate-500">Orders are available during these campus windows.</p></div>
+        <span id="serviceStatus" class="text-xs font-black px-2.5 py-1 rounded-full bg-slate-100 text-slate-600">Checking…</span>
+      </div>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+        <div class="rounded-xl bg-orange-50 p-3"><b>Morning</b><p>10:45 AM – 11:05 AM</p></div>
+        <div class="rounded-xl bg-orange-50 p-3"><b>Lunch</b><p>12:05 PM – 12:55 PM</p></div>
+        <div class="rounded-xl bg-orange-50 p-3"><b>Evening</b><p>2:45 PM – 3:00 PM</p></div>
+        <div class="rounded-xl bg-orange-50 p-3"><b>Late</b><p>4:45 PM – 5:30 PM</p></div>
+      </div>
+    </section>
+
+
+    <div class="flex gap-2 overflow-x-auto py-5">
+      <button class="cat-btn active px-4 py-2 rounded-full bg-slate-900 text-white font-bold text-sm" data-cat="All">All</button>
+      <button class="cat-btn px-4 py-2 rounded-full bg-white border border-slate-200 font-bold text-sm" data-cat="Meals">Meals</button>
+      <button class="cat-btn px-4 py-2 rounded-full bg-white border border-slate-200 font-bold text-sm" data-cat="Snacks">Snacks</button>
+      <button class="cat-btn px-4 py-2 rounded-full bg-white border border-slate-200 font-bold text-sm" data-cat="Beverages">Beverages</button>
+    </div>
+
+    <div class="flex items-end justify-between mb-3">
+      <div><h3 class="text-xl font-black">Live Menu</h3><p class="text-sm text-slate-500">Updated just now</p></div>
+      <span class="text-xs font-bold text-emerald-600">● Live stock</span>
+    </div>
+    <div id="menu" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+
+    <section class="mt-8">
+      <div class="flex items-end justify-between mb-3">
+        <div><h3 class="text-xl font-black">My Purchases & Reviews</h3><p class="text-sm text-slate-500">Review food you have purchased after it is ready.</p></div>
+        <span class="text-xs font-bold text-slate-500">⭐ Your feedback</span>
+      </div>
+      <div id="myPurchases" class="space-y-3"></div>
+      <div id="noPurchases" class="bg-white border rounded-2xl p-6 text-center text-slate-400">No purchases yet. Your completed orders will appear here.</div>
+    </section>
+  </main>
+
+  <main id="kitchenView" class="hidden max-w-6xl mx-auto px-4 py-6">
+    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+      <div><p class="text-orange-500 font-bold text-sm">VENDOR MODE</p><h2 class="text-3xl font-black">Kitchen Display</h2><p class="text-slate-500">Manage express orders during the lunch rush.</p></div>
+      <div class="flex gap-2">
+        <button id="kitchenMenuShortcut" class="hidden px-4 py-2 rounded-xl bg-orange-500 text-white font-bold text-sm">🍽️ Edit Food Menu</button>
+      </div>
+      <div class="flex gap-2">
+        <div class="bg-white rounded-2xl border p-4 min-w-28"><p class="text-xs text-slate-500">Pending</p><b id="pendingCount" class="text-2xl">2</b></div>
+        <div class="bg-white rounded-2xl border p-4 min-w-28"><p class="text-xs text-slate-500">Ready</p><b id="readyCount" class="text-2xl text-emerald-600">0</b></div>
+      </div>
+    </div>
+    <div id="orders" class="space-y-3"></div>
+  </main>
+
+  <main id="ownerView" class="hidden max-w-6xl mx-auto px-4 py-6">
+    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+      <div><p class="text-emerald-600 font-bold text-sm">SHOP OWNER PORTAL</p><h2 class="text-3xl font-black">My Canteen</h2><p class="text-slate-500">Manage today's menu, stock and customer orders.</p></div>
+      <span class="px-3 py-2 rounded-xl bg-emerald-50 text-emerald-700 font-bold text-sm">● Shop Open</span>
+    </div>
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+      <div class="bg-white rounded-2xl border p-4"><p class="text-xs text-slate-500">Today's Orders</p><b id="ownerOrders" class="text-2xl">0</b></div>
+      <div class="bg-white rounded-2xl border p-4"><p class="text-xs text-slate-500">Items in Stock</p><b id="ownerStock" class="text-2xl">0</b></div>
+      <div class="bg-white rounded-2xl border p-4"><p class="text-xs text-slate-500">Low Stock</p><b id="ownerLow" class="text-2xl text-amber-600">0</b></div>
+      <div class="bg-white rounded-2xl border p-4"><p class="text-xs text-slate-500">Revenue</p><b id="ownerRevenue" class="text-2xl text-emerald-600">₹0</b></div>
+    </div>
+    <div class="bg-white rounded-2xl border p-4 md:p-5 mb-5">
+      <div class="flex items-center justify-between gap-3 mb-3">
+        <div><h3 class="text-xl font-black">Dine-in / Parcel Settings</h3><p class="text-sm text-slate-500">Set the extra charge students pay when they choose parcel/takeaway.</p></div>
+        <span class="text-xs font-bold px-2.5 py-1 rounded-full bg-orange-50 text-orange-600">Owner Control</span>
+      </div>
+      <div class="flex flex-col sm:flex-row gap-3 sm:items-end">
+        <div class="flex-1">
+          <label class="text-sm font-bold">Parcel Extra Charge (₹)</label>
+          <input id="ownerParcelFee" type="number" min="0" step="1" class="w-full mt-1 border rounded-xl px-3 py-2" placeholder="e.g. 5">
+        </div>
+        <button id="saveParcelFee" type="button" class="px-4 py-2.5 rounded-xl bg-slate-900 text-white font-bold">Save Parcel Price</button>
+      </div>
+      <p id="parcelFeeStatus" class="text-xs text-slate-500 mt-2"></p>
+    </div>
+    <div class="bg-white rounded-2xl border p-4 md:p-5">
+      <div class="flex items-center justify-between mb-4"><div><h3 class="text-xl font-black">Menu & Stock</h3><p class="text-sm text-slate-500">Edit food, upload images, remove food and update quantity.</p></div><button id="ownerAddFood" class="px-3 py-2 rounded-xl bg-orange-500 text-white font-bold text-sm">+ Add Food</button></div>
+      <div id="ownerMenu" class="space-y-2"></div>
+    </div>
+</main></main>
+
+  <main id="adminView" class="hidden max-w-6xl mx-auto px-4 py-6">
+    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+      <div>
+        <p class="text-orange-500 font-bold text-sm">SHOP MEMBER / ADMIN</p>
+        <h2 class="text-3xl font-black">CampusBite Admin</h2>
+        <p class="text-slate-500">Manage your menu, stock and previous orders from one place.</p>
+      </div>
+      <div class="flex gap-2">
+        <button id="adminMenuBtn" class="admin-section-btn px-4 py-2 rounded-xl bg-slate-900 text-white font-bold text-sm">Menu & Stock</button>
+        <button id="adminHistoryBtn" class="admin-section-btn px-4 py-2 rounded-xl bg-white border font-bold text-sm">Order History</button>
+        <button id="adminOwnersBtn" class="admin-section-btn px-4 py-2 rounded-xl bg-white border font-bold text-sm">Owners</button>
+        <button id="adminStudentsBtn" class="admin-section-btn px-4 py-2 rounded-xl bg-white border font-bold text-sm">Students</button>
+        <button id="adminServiceBtn" class="admin-section-btn px-4 py-2 rounded-xl bg-white border font-bold text-sm">Special Time</button>
+        <button id="adminReportsBtn" class="admin-section-btn px-4 py-2 rounded-xl bg-white border font-bold text-sm">Reports</button>
+      </div>
+    </div>
+
+    <section id="adminMenuSection">
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+        <div class="bg-white rounded-2xl border p-4"><p class="text-xs text-slate-500">Menu Items</p><b id="statItems" class="text-2xl">0</b></div>
+        <div class="bg-white rounded-2xl border p-4"><p class="text-xs text-slate-500">Total Stock</p><b id="statStock" class="text-2xl">0</b></div>
+        <div class="bg-white rounded-2xl border p-4"><p class="text-xs text-slate-500">Low Stock</p><b id="statLow" class="text-2xl text-amber-600">0</b></div>
+        <div class="bg-white rounded-2xl border p-4"><p class="text-xs text-slate-500">Out of Stock</p><b id="statOut" class="text-2xl text-red-600">0</b></div>
+      </div>
+
+      <div class="bg-white rounded-2xl border p-4 md:p-5">
+        <div class="flex items-center justify-between mb-4">
+          <div><h3 class="text-xl font-black">Menu & Food Availability</h3><p class="text-sm text-slate-500">Update price, stock quantity and availability.</p></div>
+          <button id="addFoodBtn" class="px-3 py-2 rounded-xl bg-orange-500 text-white font-bold text-sm">+ Add Food</button>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm min-w-[720px]">
+            <thead><tr class="border-b text-left text-slate-500">
+              <th class="py-3">Food</th><th>Category</th><th>Price</th><th>Stock</th><th>Status</th><th>Action</th>
+            </tr></thead>
+            <tbody id="adminMenuTable"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="adminOwnersSection" class="hidden mt-5">
+      <div class="bg-white rounded-2xl border p-4 md:p-5">
+        <div class="flex items-center justify-between mb-4"><div><h3 class="text-xl font-black">Shop Owners</h3><p class="text-sm text-slate-500">Add or remove authorized shop members.</p></div><button id="addOwnerBtn" class="px-3 py-2 rounded-xl bg-orange-500 text-white font-bold text-sm">+ Add Owner</button></div>
+        <div id="ownersTable" class="space-y-2"></div>
+      </div>
+    </section>
+
+    <section id="adminStudentsSection" class="hidden mt-5">
+      <div class="bg-white rounded-2xl border p-4 md:p-5">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+          <div>
+            <h3 class="text-xl font-black">Students</h3>
+            <p class="text-sm text-slate-500">Add and manage student accounts allowed to use CampusBite.</p>
+          </div>
+          <button id="addStudentBtn" class="px-3 py-2 rounded-xl bg-orange-500 text-white font-bold text-sm">+ Add Student</button>
+        </div>
+        <div id="studentsTable" class="space-y-2"></div>
+      </div>
+    </section>
+
+    <section id="adminServiceSection" class="hidden mt-5">
+      <div class="bg-white rounded-2xl border p-4 md:p-5">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+          <div>
+            <h3 class="text-xl font-black">Special Canteen Opening</h3>
+            <p class="text-sm text-slate-500">Open the canteen during an extra time outside the regular campus breaks. This is for today.</p>
+          </div>
+          <span class="text-xs font-bold px-3 py-2 rounded-xl bg-orange-50 text-orange-700">Admin controlled</span>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+          <label class="text-sm font-semibold">Reason / Name<input id="specialServiceName" class="mt-1 w-full border rounded-xl px-3 py-2" placeholder="Special Break"></label>
+          <label class="text-sm font-semibold">Start time<input id="specialServiceStart" type="time" class="mt-1 w-full border rounded-xl px-3 py-2" value="13:15"></label>
+          <label class="text-sm font-semibold">End time<input id="specialServiceEnd" type="time" class="mt-1 w-full border rounded-xl px-3 py-2" value="13:30"></label>
+          <button id="addSpecialServiceBtn" type="button" class="px-4 py-2.5 rounded-xl bg-orange-500 text-white font-bold">+ Open Extra Time</button>
+        </div>
+        <div id="specialServiceList" class="mt-4 space-y-2"></div>
+      </div>
+    </section>
+
+    <section id="adminReportsSection" class="hidden mt-5">
+      <div class="bg-white rounded-2xl border p-4 md:p-5">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+          <div><h3 class="text-xl font-black">Student & Owner Reports</h3><p class="text-sm text-slate-500">Review queries, process the issue, and notify the person who reported it.</p></div>
+          <span id="openReportsCount" class="text-xs font-bold px-3 py-2 rounded-xl bg-orange-50 text-orange-700">0 Open</span>
+        </div>
+        <div id="adminReportsList" class="space-y-3"></div>
+      </div>
+    </section>
+
+    <section id="adminHistorySection" class="hidden">
+      <div class="bg-white rounded-2xl border p-4 md:p-5">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+          <div><h3 class="text-xl font-black">Order History</h3><p class="text-sm text-slate-500">Completed and previous CampusBite orders.</p></div>
+          <input id="historySearch" placeholder="Search token or food..." class="border rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-orange-200">
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm min-w-[700px]">
+            <thead><tr class="border-b text-left text-slate-500"><th class="py-3">Token</th><th>Items</th><th>Amount</th><th>Payment</th><th>Status</th><th>Time</th><th>Action</th></tr></thead>
+            <tbody id="historyTable"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <main id="reportView" class="hidden max-w-4xl mx-auto px-4 py-6">
+    <div class="mb-6">
+      <p class="text-orange-500 font-bold text-sm">SUPPORT CENTER</p>
+      <h2 class="text-3xl font-black">Help / Report a Query</h2>
+      <p class="text-slate-500 mt-1">Students and shop owners can report an issue, ask a question, or request help.</p>
+    </div>
+    <div class="grid lg:grid-cols-5 gap-5">
+      <section class="lg:col-span-3 bg-white rounded-2xl border p-5">
+        <h3 class="text-xl font-black mb-1">Submit a Query</h3>
+        <p class="text-sm text-slate-500 mb-5">Give enough detail so the canteen team can understand the issue.</p>
+        <div class="space-y-4">
+          <label class="block text-sm font-bold">Query type
+            <select id="reportType" class="mt-1 w-full border rounded-xl px-3 py-3">
+              <option>Order / Payment</option><option>Food / Menu</option><option>Refund / Cancellation</option><option>Technical Issue</option><option>General Query</option><option>Other</option>
+            </select>
+          </label>
+          <label class="block text-sm font-bold">Subject
+            <input id="reportSubject" class="mt-1 w-full border rounded-xl px-3 py-3" maxlength="80" placeholder="Briefly describe your query">
+          </label>
+          <label class="block text-sm font-bold">Order Token <span class="font-normal text-slate-400">(optional)</span>
+            <input id="reportToken" class="mt-1 w-full border rounded-xl px-3 py-3" maxlength="20" placeholder="#CB-104">
+          </label>
+          <label class="block text-sm font-bold">Details
+            <textarea id="reportDetails" rows="5" maxlength="500" class="mt-1 w-full border rounded-xl px-3 py-3" placeholder="Explain the problem or question..."></textarea>
+          </label>
+          <label class="block text-sm font-bold">Contact / Reply note <span class="font-normal text-slate-400">(optional)</span>
+            <input id="reportContact" class="mt-1 w-full border rounded-xl px-3 py-3" maxlength="100" placeholder="Phone, email, or 'reply in app'">
+          </label>
+          <button id="submitReport" type="button" class="w-full py-3.5 rounded-xl bg-orange-500 text-white font-black">Submit Query</button>
+          <p id="reportStatus" class="text-sm text-center font-semibold"></p>
+        </div>
+      </section>
+      <section class="lg:col-span-2 bg-white rounded-2xl border p-5">
+        <div class="flex items-center justify-between mb-4"><div><h3 class="text-xl font-black">My Reports</h3><p class="text-xs text-slate-500">Queries submitted from your account.</p></div><span class="text-xs font-bold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700">Live</span></div>
+        <div id="myReports" class="space-y-3"></div>
+      </section>
+    </div>
+  </main>
+
+  <div id="cartDrawer" class="fixed inset-0 z-50 hidden">
+    <div class="absolute inset-0 modal-backdrop" data-close="cart"></div>
+    <aside class="absolute right-0 top-0 h-full w-full max-w-md bg-white shadow-2xl p-5 overflow-y-auto pop">
+      <div class="flex items-center justify-between mb-5"><div><h2 class="text-2xl font-black">Your Order</h2><p class="text-sm text-slate-500">Express pickup</p></div><button class="closeBtn w-10 h-10 rounded-xl bg-slate-100" data-close="cart"><i data-lucide="x"></i></button></div>
+      <div id="cartItems" class="space-y-3"></div>
+      <div id="cartEmpty" class="py-12 text-center text-slate-400"><i data-lucide="shopping-basket" class="w-10 h-10 mx-auto mb-3"></i><p>Your cart is empty.</p></div>
+      <div id="checkoutArea" class="hidden mt-6 border-t pt-5">
+        <div class="space-y-2 text-sm">
+          <div class="flex justify-between"><span>Subtotal</span><b id="subtotal">₹0</b></div>
+          <div class="flex justify-between"><span>Express Pickup Fee</span><b>₹2</b></div>
+          <div class="flex justify-between text-lg font-black pt-2 border-t"><span>Total</span><span id="total">₹2</span></div>
+        </div>
+        <p class="text-xs font-bold text-slate-500 mt-5 mb-2">Pickup type</p>
+        <div class="grid grid-cols-2 gap-2 mb-4">
+          <label id="dineOption" class="border-2 border-orange-500 rounded-xl p-3 flex gap-2 cursor-pointer">
+            <input type="radio" name="pickupType" value="dine" checked>
+            <span><b>🍽️ Dine-in</b><small class="block text-slate-500">No parcel charge</small></span>
+          </label>
+          <label id="parcelOption" class="border rounded-xl p-3 flex gap-2 cursor-pointer">
+            <input type="radio" name="pickupType" value="parcel">
+            <span><b>📦 Parcel</b><small id="parcelFeeLabel" class="block text-slate-500">Extra ₹0</small></span>
+          </label>
+        </div>
+        <p class="text-xs font-bold text-slate-500 mt-5 mb-2">Payment method</p>
+        <div class="grid gap-2">
+          <label class="border-2 border-orange-500 rounded-xl p-3 flex gap-3 cursor-pointer"><input type="radio" name="pay" value="wallet" checked><span><b>Campus Wallet</b><small class="block text-slate-500">Instant Offline QR</small></span></label>
+          <label class="border rounded-xl p-3 flex gap-3 cursor-pointer"><input type="radio" name="pay" value="upi"><span><b>UPI / Net Banking</b><small class="block text-slate-500">Online payment</small></span></label>
+        </div>
+        <button id="placeOrder" class="w-full mt-4 py-3.5 rounded-2xl bg-orange-500 hover:bg-orange-600 text-white font-black shadow-lg shadow-orange-200">Place Order • <span id="buttonTotal">₹2</span></button>
+      </div>
+    </aside>
+  </div>
+
+  <div id="tokenModal" class="fixed inset-0 z-[60] hidden modal-backdrop grid place-items-center p-4">
+    <div class="bg-white rounded-3xl max-w-sm w-full p-6 text-center pop shadow-2xl">
+      <div class="mx-auto w-14 h-14 rounded-full bg-emerald-100 text-emerald-600 grid place-items-center"><i data-lucide="check-circle" class="w-8 h-8"></i></div>
+      <p class="text-emerald-600 font-black mt-3 text-sm uppercase">Order confirmed</p>
+      <h2 class="text-3xl font-black mt-1">Pickup Pass</h2>
+      <div class="mt-5 bg-slate-950 text-white rounded-2xl p-5">
+        <p class="text-xs text-slate-400">YOUR TOKEN</p><p class="text-4xl font-black tracking-wider mt-1">#CB-104</p>
+        <div class="flex justify-center my-5"><div class="qr w-32 h-32 rounded-xl border-8 border-white"></div></div>
+        <div class="grid grid-cols-2 gap-3 text-left text-sm">
+          <div><p class="text-slate-400">Counter</p><b>Counter 2</b><p class="text-orange-400 text-xs font-bold">Express Lane</p></div>
+          <div><p class="text-slate-400">Estimated</p><b>Ready in 6 mins</b></div>
+        </div>
+      </div>
+      <button id="doneBtn" class="w-full mt-4 py-3 rounded-2xl bg-slate-900 text-white font-black">Done</button>
+    </div>
+  </div>
+
+  <div id="reviewModal" class="fixed inset-0 z-[78] hidden modal-backdrop grid place-items-center p-4">
+    <div class="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl pop">
+      <div class="flex items-center justify-between mb-4">
+        <div><h3 class="text-xl font-black">Review Your Food</h3><p id="reviewFoodName" class="text-xs text-slate-500">Your recent purchase</p></div>
+        <button id="reviewModalClose" class="w-9 h-9 rounded-xl bg-slate-100">×</button>
+      </div>
+      <input type="hidden" id="reviewOrderIndex">
+      <div class="mb-4">
+        <label class="text-sm font-bold">Rating</label>
+        <div id="starRating" class="flex gap-2 mt-2" role="radiogroup" aria-label="Food rating">
+          <button type="button" data-star="1" class="review-star text-3xl text-slate-300" aria-label="1 star">★</button>
+          <button type="button" data-star="2" class="review-star text-3xl text-slate-300" aria-label="2 stars">★</button>
+          <button type="button" data-star="3" class="review-star text-3xl text-slate-300" aria-label="3 stars">★</button>
+          <button type="button" data-star="4" class="review-star text-3xl text-slate-300" aria-label="4 stars">★</button>
+          <button type="button" data-star="5" class="review-star text-3xl text-slate-300" aria-label="5 stars">★</button>
+        </div>
+      </div>
+      <textarea id="reviewComment" rows="4" class="w-full border rounded-xl px-3 py-2" placeholder="Tell us what you liked or what could be improved..."></textarea>
+      <button id="submitReview" class="w-full mt-4 py-3 rounded-xl bg-orange-500 text-white font-black">Submit Review</button>
+    </div>
+  </div>
+
+  <div id="foodModal" class="fixed inset-0 z-[70] hidden modal-backdrop grid place-items-center p-4">
+    <div class="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl pop">
+      <div class="flex items-center justify-between mb-4"><h3 id="foodModalTitle" class="text-xl font-black">Add Food</h3><button id="foodModalClose" class="w-9 h-9 rounded-xl bg-slate-100">×</button></div>
+      <div class="space-y-3">
+        <input id="foodName" class="w-full border rounded-xl px-3 py-2" placeholder="Food name">
+        <select id="foodCat" class="w-full border rounded-xl px-3 py-2"><option>Meals</option><option>Snacks</option><option>Beverages</option></select>
+        <div class="grid grid-cols-2 gap-3"><input id="foodPrice" type="number" class="border rounded-xl px-3 py-2" placeholder="Price ₹"><input id="foodStock" type="number" class="border rounded-xl px-3 py-2" placeholder="Stock count"></div>
+        <input id="foodTime" class="w-full border rounded-xl px-3 py-2" placeholder="Prep time e.g. 5 min">
+        <div class="border rounded-xl p-3"><label class="text-sm font-bold">Food Image URL <span class="font-normal text-slate-400">(optional)</span></label><input id="foodImage" type="url" class="w-full mt-2 border rounded-lg px-3 py-2 text-sm" placeholder="https://example.com/food.jpg"><img id="foodImagePreview" class="hidden mt-3 w-full h-32 object-cover rounded-xl"></div>
+        <button id="saveFood" class="w-full py-3 rounded-xl bg-slate-900 text-white font-black">Save Food</button>
+      </div>
+    </div>
+  </div>
+
+
+  <div id="studentModal" class="fixed inset-0 z-[76] hidden modal-backdrop grid place-items-center p-4">
+    <div class="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl pop">
+      <div class="flex items-center justify-between mb-4">
+        <div><h3 class="text-xl font-black">Add Student</h3><p class="text-xs text-slate-500">Create a CampusBite student login.</p></div>
+        <button id="studentModalClose" class="w-9 h-9 rounded-xl bg-slate-100">×</button>
+      </div>
+      <div class="space-y-3">
+        <input id="studentName" class="w-full border rounded-xl px-3 py-2" placeholder="Student name">
+        <input id="studentUsername" class="w-full border rounded-xl px-3 py-2" placeholder="Student ID / username">
+        <input id="studentPassword" class="w-full border rounded-xl px-3 py-2" placeholder="Temporary password">
+        <input id="studentClass" class="w-full border rounded-xl px-3 py-2" placeholder="Class / Department (optional)">
+        <button id="saveStudent" class="w-full py-3 rounded-xl bg-slate-900 text-white font-black">Add Student</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="ownerModal" class="fixed inset-0 z-[75] hidden modal-backdrop grid place-items-center p-4">
+    <div class="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl pop">
+      <div class="flex items-center justify-between mb-4"><h3 class="text-xl font-black">Add Shop Owner</h3><button id="ownerModalClose" class="w-9 h-9 rounded-xl bg-slate-100">×</button></div>
+      <div class="space-y-3">
+        <input id="ownerName" class="w-full border rounded-xl px-3 py-2" placeholder="Owner name">
+        <input id="ownerUsername" class="w-full border rounded-xl px-3 py-2" placeholder="Login username">
+        <input id="ownerPassword" class="w-full border rounded-xl px-3 py-2" placeholder="Temporary password">
+        <button id="saveOwner" class="w-full py-3 rounded-xl bg-slate-900 text-white font-black">Add Owner</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+const menu = [
+  {id:1,cat:'Meals',name:'South Indian Meals',price:80,time:'8 min',stock:'In Stock',qty:35,emoji:'🍛'},
+  {id:2,cat:'Meals',name:'Veg Fried Rice',price:75,time:'7 min',stock:'In Stock',qty:35,emoji:'🍚'},
+  {id:3,cat:'Meals',name:'Paneer Wrap',price:65,time:'5 min',stock:'Low Stock',qty:6,emoji:'🌯'},
+  {id:4,cat:'Snacks',name:'Samosa (2 pcs)',price:30,time:'2 min',stock:'In Stock',qty:35,emoji:'🥟'},
+  {id:5,cat:'Snacks',name:'Masala Sandwich',price:45,time:'4 min',stock:'Low Stock',qty:6,emoji:'🥪'},
+  {id:6,cat:'Beverages',name:'Cold Coffee',price:50,time:'2 min',stock:'In Stock',qty:35,emoji:'🥤'},
+  {id:7,cat:'Beverages',name:'Fresh Lime',price:30,time:'2 min',stock:'In Stock',qty:35,emoji:'🍋'},
+  {id:8,cat:'Beverages',name:'Tea',price:15,time:'1 min',stock:'In Stock',qty:35,emoji:'☕'}
+];
+let cart = [];
+let parcelFee = 5;
+let myPurchases = [];
+let reviews = [];
+let selectedReviewStars = 0;
+let reports = [];
+let orders = [
+ {token:'#CB-101',items:'2 × South Indian Meals',total:162,status:'Preparing'},
+ {token:'#CB-102',items:'1 × Veg Fried Rice + 1 × Tea',total:92,status:'Preparing'}
+];
+function icon(name){return `<i data-lucide="${name}" class="w-4 h-4"></i>`}
+
+let editingFoodId = null;
+let orderHistory = [
+ {token:'#CB-098',items:'1 × South Indian Meals',total:82,payment:'Campus Wallet',status:'Completed',time:'12:02 PM'},
+ {token:'#CB-099',items:'2 × Samosa + 1 × Tea',total:77,payment:'UPI',status:'Completed',time:'12:08 PM'},
+ {token:'#CB-100',items:'1 × Veg Fried Rice',total:77,payment:'Campus Wallet',status:'Completed',time:'12:15 PM'}
+];
+
+function renderAdmin(){
+ const stock=menu.reduce((a,x)=>a+(x.qty||0),0), low=menu.filter(x=>(x.qty||0)>0&&(x.qty||0)<=10).length, out=menu.filter(x=>(x.qty||0)<=0).length;
+ document.getElementById('statItems').textContent=menu.length;
+ document.getElementById('statStock').textContent=stock;
+ document.getElementById('statLow').textContent=low;
+ document.getElementById('statOut').textContent=out;
+ renderSpecialServices();
+ document.getElementById('adminMenuTable').innerHTML=menu.map(x=>{
+   const q=x.qty||0, status=q===0?'Out of Stock':q<=10?'Low Stock':'In Stock';
+   const cls=q===0?'text-red-600':q<=10?'text-amber-600':'text-emerald-600';
+   return `<tr class="border-b last:border-0">
+     <td class="py-3"><div class="flex items-center gap-2"><span class="text-2xl">${x.emoji}</span><b>${x.name}</b></div></td>
+     <td>${x.cat}</td><td>₹${x.price}</td>
+     <td><input data-stock="${x.id}" type="number" min="0" value="${q}" class="w-20 border rounded-lg px-2 py-1"></td>
+     <td><span class="${cls} font-bold">${status}</span></td>
+     <td class="flex gap-1"><button onclick="editFood(${x.id})" class="px-3 py-1.5 rounded-lg bg-slate-100 font-bold">Edit</button><button onclick="removeFood(${x.id})" class="px-3 py-1.5 rounded-lg bg-red-50 text-red-600 font-bold">Remove</button></td>
+   </tr>`;
+ }).join('');
+ document.querySelectorAll('[data-stock]').forEach(inp=>inp.onchange=()=>{const x=menu.find(m=>m.id==inp.dataset.stock);x.qty=Math.max(0,+inp.value||0);renderAdmin();renderMenu();});
+ renderHistory();
+}
+function renderHistory(){
+ const q=(document.getElementById('historySearch')?.value||'').toLowerCase();
+ const rows=orderHistory.filter(o=>(o.token+' '+o.items).toLowerCase().includes(q));
+ document.getElementById('historyTable').innerHTML=rows.map(o=>`<tr class="border-b last:border-0">
+   <td class="py-3 font-black">${o.token}</td><td>${o.items}<div class="text-xs text-slate-500 mt-1">${o.pickupLabel||'Dine-in'}</div></td><td class="font-bold">₹${o.total}</td><td>${o.payment}</td>
+   <td><span class="${o.status==='Refunded'?'text-red-600':'text-emerald-600'} font-bold">${o.status}</span></td><td>${o.time}</td>
+   <td>${o.status==='Refunded'?'<span class="text-slate-400">Refunded</span>':`<button onclick="refundOrder('${o.token}')" class="px-2 py-1 rounded-lg bg-red-50 text-red-600 font-bold">Refund</button>`}</td>
+ </tr>`).join('');
+}
+function editFood(id){
+ const x=menu.find(m=>m.id===id); if(!x)return;
+ editingFoodId=id;
+ document.getElementById('foodModalTitle').textContent='Edit Food';
+ document.getElementById('foodName').value=x.name; document.getElementById('foodCat').value=x.cat;
+ document.getElementById('foodPrice').value=x.price; document.getElementById('foodStock').value=x.qty||0; document.getElementById('foodTime').value=x.time||'5 min';
+ selectedFoodImage=x.image||'';
+ document.getElementById('foodImage').value='';
+ const prev=document.getElementById('foodImagePreview');
+ if(selectedFoodImage){prev.src=selectedFoodImage;prev.classList.remove('hidden')}else{prev.removeAttribute('src');prev.classList.add('hidden')}
+ document.getElementById('foodModal').classList.remove('hidden');
+}
+function closeFoodModal(){document.getElementById('foodModal').classList.add('hidden');editingFoodId=null;}
+
+function renderMenu(filter='All'){
+ const el=document.getElementById('menu');
+ if(!el)return;
+ el.innerHTML=menu.filter(x=>filter==='All'||x.cat===filter).map(x=>{
+   const q=x.qty||0;
+   const status=q<=0?'Out of Stock':q<=10?'Low Stock':'In Stock';
+   const statusClass=q<=0?'text-red-600':q<=10?'text-amber-600':'text-emerald-600';
+   return `<article class="bg-white rounded-2xl border border-slate-200 p-3 shadow-sm hover:shadow-md transition">
+     ${renderFoodImage(x)}
+     <div class="pt-3">
+       <div class="flex justify-between gap-2"><h4 class="font-black">${x.name}</h4><b class="text-orange-600 whitespace-nowrap">₹${x.price}</b></div>
+       <div class="flex items-center gap-3 text-xs text-slate-500 mt-2">${icon('clock')} ${x.time||'5 min'}<span class="${statusClass} font-bold">● ${status} (${q})</span></div>
+       <button ${q<=0?'disabled':''} onclick="add(${x.id})" class="w-full mt-3 py-2.5 rounded-xl ${q<=0?'bg-slate-200 text-slate-400 cursor-not-allowed':'bg-slate-900 text-white hover:bg-orange-500'} font-bold text-sm transition">${q<=0?'Out of Stock':'Add to Cart'}</button>
+     </div>
+   </article>`;
+ }).join('');
+ lucide.createIcons();
+}
+function add(id){ const x=menu.find(m=>m.id===id); const c=cart.find(i=>i.id===id); c?c.qty++:cart.push({...x,qty:1}); renderCart(); }
+function change(id,d){const c=cart.find(i=>i.id===id); if(!c)return;c.qty+=d;if(c.qty<=0)cart=cart.filter(i=>i.id!==id);renderCart();}
+function getPickupType(){return document.querySelector('input[name="pickupType"]:checked')?.value||'dine';}
+function getCurrentExtraFee(){return getPickupType()==='parcel'?Math.max(0,Number(parcelFee)||0):2;}
+function updatePickupUI(){
+ const type=getPickupType();
+ const dine=document.getElementById('dineOption'), parcel=document.getElementById('parcelOption');
+ if(dine&&parcel){
+   [dine,parcel].forEach(x=>x.classList.remove('border-orange-500'));
+   [dine,parcel].forEach(x=>x.classList.add('border'));
+   const active=type==='parcel'?parcel:dine; active.classList.remove('border'); active.classList.add('border-2','border-orange-500');
+ }
+ const lbl=document.getElementById('parcelFeeLabel'); if(lbl) lbl.textContent='Extra ₹'+Math.max(0,Number(parcelFee)||0);
+}
+function renderCart(){
+ const count=cart.reduce((a,b)=>a+b.qty,0), sub=cart.reduce((a,b)=>a+b.price*b.qty,0);
+ const fee=getCurrentExtraFee(), total=sub+fee;
+ document.getElementById('cartCount').textContent=count;
+ document.getElementById('cartItems').innerHTML=cart.map(x=>`<div class="flex gap-3 items-center border rounded-2xl p-3"><div class="w-12 h-12 rounded-xl bg-orange-50 grid place-items-center text-2xl">${x.emoji}</div><div class="flex-1"><b>${x.name}</b><p class="text-sm text-slate-500">₹${x.price} each</p></div><div class="flex items-center gap-2"><button onclick="change(${x.id},-1)" class="w-7 h-7 rounded-lg bg-slate-100">−</button><b>${x.qty}</b><button onclick="change(${x.id},1)" class="w-7 h-7 rounded-lg bg-slate-100">+</button></div></div>`).join('');
+ document.getElementById('cartEmpty').classList.toggle('hidden',count>0);
+ document.getElementById('checkoutArea').classList.toggle('hidden',count===0);
+ document.getElementById('subtotal').textContent='₹'+sub;
+ const feeLabel=document.querySelector('#checkoutArea .space-y-2 > div:nth-child(2) span');
+ const feeValue=document.querySelector('#checkoutArea .space-y-2 > div:nth-child(2) b');
+ if(feeLabel) feeLabel.textContent=getPickupType()==='parcel'?'Parcel Charge':'Express Pickup Fee';
+ if(feeValue) feeValue.textContent='₹'+fee;
+ document.getElementById('total').textContent='₹'+total;
+ document.getElementById('buttonTotal').textContent='₹'+total;
+ updatePickupUI();
+}
+
+function openCart(){document.getElementById('cartDrawer').classList.remove('hidden');}
+function closeCart(){document.getElementById('cartDrawer').classList.add('hidden');}
+function renderMyPurchases(){
+ const el=document.getElementById('myPurchases'), empty=document.getElementById('noPurchases');
+ if(!el||!empty)return;
+ empty.classList.toggle('hidden',myPurchases.length>0);
+ el.innerHTML=myPurchases.map((o,i)=>{
+   const review=reviews.find(r=>r.token===o.token);
+   const canReview=o.status==='Ready' || o.status==='Completed';
+   const reviewText=review?`<div class="mt-3 p-3 rounded-xl bg-amber-50 border border-amber-100"><div class="text-amber-500 font-black">${'★'.repeat(review.stars)}${'☆'.repeat(5-review.stars)}</div><p class="text-sm text-slate-700 mt-1">${review.comment||'No comment added.'}</p><p class="text-[11px] text-slate-400 mt-1">Reviewed</p></div>`:'';
+   return `<div class="bg-white border rounded-2xl p-4">
+     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+       <div><div class="flex items-center gap-2"><b>${o.token}</b><span class="text-xs font-bold px-2 py-1 rounded-full ${o.status==='Ready'||o.status==='Completed'?'bg-emerald-50 text-emerald-700':'bg-orange-50 text-orange-700'}">${o.status}</span></div><p class="text-sm text-slate-500 mt-1">${o.items} • ₹${o.total}</p></div>
+       ${review?'<span class="text-xs font-bold text-emerald-600">✓ Reviewed</span>':canReview?`<button onclick="openReview(${i})" class="px-4 py-2 rounded-xl bg-slate-900 text-white font-bold text-sm">⭐ Review Food</button>`:'<span class="text-xs font-semibold text-slate-400">Review after food is ready</span>'}
+     </div>${reviewText}
+   </div>`;
+ }).join('');
+ lucide.createIcons();
+}
+function openReview(i){
+ const o=myPurchases[i]; if(!o)return;
+ if(!(o.status==='Ready'||o.status==='Completed')){alert('You can review the food after your order is ready.');return;}
+ if(reviews.some(r=>r.token===o.token)){alert('You have already reviewed this order.');return;}
+ document.getElementById('reviewOrderIndex').value=i;
+ document.getElementById('reviewFoodName').textContent=o.items+' • '+o.token;
+ document.getElementById('reviewComment').value='';
+ selectedReviewStars=0; updateReviewStars();
+ document.getElementById('reviewModal').classList.remove('hidden');
+}
+function updateReviewStars(){
+ document.querySelectorAll('.review-star').forEach(b=>{const n=+b.dataset.star;b.classList.toggle('text-amber-400',n<=selectedReviewStars);b.classList.toggle('text-slate-300',n>selectedReviewStars);});
+}
+function closeReview(){document.getElementById('reviewModal').classList.add('hidden');}
+
+function renderOrders(){
+ document.getElementById('orders').innerHTML=orders.map((o,i)=>`<div class="bg-white border rounded-2xl p-4 flex flex-col sm:flex-row gap-4 sm:items-center justify-between"><div class="flex items-center gap-4"><div class="w-14 h-14 rounded-xl bg-slate-900 text-white grid place-items-center font-black text-sm">${o.token}</div><div><b>${o.items}</b><p class="text-sm text-slate-500">Total ₹${o.total} • ${o.status}</p></div></div>${o.status==='Preparing'?`<div class="flex gap-2">
+  <select id="counter-${i}" class="border rounded-xl px-3 py-2 font-bold text-sm"><option>Counter 1</option><option>Counter 2</option><option>Counter 3</option><option>Counter 4</option></select>
+  <button onclick="ready(${i})" class="px-4 py-2.5 rounded-xl bg-emerald-500 text-white font-bold">Mark Ready</button>
+</div>`:`<span class="text-emerald-600 font-black">✓ Ready • ${o.counter||'Counter 2'}</span>`}</div>`).join('');
+ document.getElementById('pendingCount').textContent=orders.filter(o=>o.status==='Preparing').length;
+ document.getElementById('readyCount').textContent=orders.filter(o=>o.status==='Ready').length;
+ lucide.createIcons();
+}
+function ready(i){
+ const counter=document.getElementById('counter-'+i)?.value||'Counter 2';
+ orders[i].status='Ready'; orders[i].counter=counter;
+ const mine=myPurchases.find(x=>x.token===orders[i].token); if(mine){mine.status='Ready'; mine.counter=counter; renderMyPurchases();}
+ const h=orderHistory.find(x=>x.token===orders[i].token); if(h){h.status='Ready';h.counter=counter;}
+ renderOrders();renderOwner();renderHistory();
+ addNotification('Your food is ready!', `Order ${orders[i].token} is ready for pickup at ${counter} — Express Lane.`, orders[i].token);
+}
+document.querySelectorAll('.cat-btn').forEach(b=>b.onclick=()=>{document.querySelectorAll('.cat-btn').forEach(x=>x.classList.remove('bg-slate-900','text-white'));document.querySelectorAll('.cat-btn').forEach(x=>x.classList.add('bg-white','border','border-slate-200'));b.classList.remove('bg-white','border','border-slate-200');b.classList.add('bg-slate-900','text-white');renderMenu(b.dataset.cat)});
+document.getElementById('cartBtn').onclick=openCart;
+document.querySelectorAll('[data-close="cart"]').forEach(x=>x.onclick=closeCart);
+document.getElementById('studentTab').onclick=()=>{if(!currentRole)return;if(showOnly('studentView')&&currentRole==='student'){renderMenu();renderMyPurchases();}};
+document.getElementById('vendorTab').onclick=()=>{
+ if(!currentRole)return;
+ if(showOnly('kitchenView'))renderOrders();
+};
+document.getElementById('kitchenMenuShortcut').onclick=()=>{
+ if(currentRole==='owner'){showOnly('ownerView');renderOwner();}
+};
+document.getElementById('placeOrder').onclick=()=>{
+ if(!isCanteenOpenNow()){alert('The canteen is currently closed. Please order during a regular or special opening time.');updateServiceStatus();return;}
+ if(!cart.length)return;
+ const payment=document.querySelector('input[name="pay"]:checked')?.value==='upi'?'UPI / Net Banking':'Campus Wallet';
+ cart.forEach(c=>{const x=menu.find(m=>m.id===c.id);if(x)x.qty=Math.max(0,(x.qty||0)-c.qty)});
+ const pickupType=getPickupType();
+ const extraFee=getCurrentExtraFee();
+ const total=cart.reduce((a,b)=>a+b.price*b.qty,0)+extraFee;
+ const token='#CB-'+(104+orderHistory.length);
+ const items=cart.map(x=>`${x.qty} × ${x.name}`).join(' + ');
+ const pickupLabel=pickupType==='parcel'?'Parcel':'Dine-in';
+ orders.unshift({token,items,total,status:'Preparing',pickupType,pickupLabel,extraFee});
+ myPurchases.unshift({token,items,total,status:'Preparing',pickupType,pickupLabel,extraFee,time:new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})});
+ orderHistory.unshift({token,items,total,payment,status:'Preparing',pickupType,pickupLabel,extraFee,time:new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})});
+ closeCart();document.getElementById('tokenModal').classList.remove('hidden');
+ cart=[];renderCart();renderMenu();renderOwner();renderHistory();renderMyPurchases();
+};
+document.getElementById('doneBtn').onclick=()=>document.getElementById('tokenModal').classList.add('hidden');
+
+document.querySelectorAll('.review-star').forEach(btn=>btn.addEventListener('click',()=>{selectedReviewStars=+btn.dataset.star;updateReviewStars();}));
+document.getElementById('reviewModalClose').onclick=closeReview;
+document.getElementById('submitReview').onclick=()=>{
+ const idx=+document.getElementById('reviewOrderIndex').value; const o=myPurchases[idx];
+ if(!o||selectedReviewStars<1){alert('Please select a rating from 1 to 5 stars.');return;}
+ const comment=document.getElementById('reviewComment').value.trim();
+ reviews.push({token:o.token,stars:selectedReviewStars,comment,time:new Date().toLocaleString()});
+ closeReview(); renderMyPurchases(); alert('Thank you! Your food review has been submitted.');
+};
+
+let specialServiceWindows=[];
+const serviceWindows=[
+ {name:'Morning Break',start:'10:45',end:'11:05'},
+ {name:'Lunch',start:'12:05',end:'12:55'},
+ {name:'Evening Break',start:'14:45',end:'15:00'},
+ {name:'Late Service',start:'16:45',end:'17:30'}
+];
+function mins(hm){const [h,m]=hm.split(':').map(Number);return h*60+m;}
+function allServiceWindows(){return [...serviceWindows,...specialServiceWindows].sort((a,b)=>mins(a.start)-mins(b.start));}
+function isCanteenOpenNow(){const cur=new Date().getHours()*60+new Date().getMinutes()+new Date().getSeconds()/60;return allServiceWindows().some(w=>cur>=mins(w.start)&&cur<mins(w.end));}
+function updateServiceStatus(){
+ const now=new Date(), cur=now.getHours()*60+now.getMinutes()+now.getSeconds()/60;
+ let active=null,next=null;
+ for(const w of allServiceWindows()){
+   if(cur>=mins(w.start)&&cur<mins(w.end)){active=w;break;}
+   if(cur<mins(w.start)&&!next)next=w;
+ }
+ const status=document.querySelector('header .text-emerald-700');
+ const statusBadge=document.getElementById('serviceStatus');
+ const countdown=document.getElementById('countdown');
+ if(active){
+   const remaining=Math.max(0,Math.floor(mins(active.end)-cur));
+   const sec=Math.max(0,Math.floor((mins(active.end)-cur)*60)%60);
+   status.innerHTML='<span class="w-2 h-2 rounded-full bg-emerald-500 pulse-dot"></span> Canteen Open';
+   countdown.textContent=String(remaining).padStart(2,'0')+':'+String(sec).padStart(2,'0');
+   statusBadge.textContent=active.name+' • Open';
+   statusBadge.className='text-xs font-black px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700';
+ }else{
+   let label='Canteen Closed', diff='';
+   if(next){const d=Math.max(0,Math.floor(mins(next.start)-cur));diff=`Next: ${next.name} in ${Math.floor(d/60)}h ${d%60}m`;}else diff='Next service tomorrow at 10:45 AM';
+   status.innerHTML='<span class="w-2 h-2 rounded-full bg-slate-400"></span> Canteen Closed';
+   countdown.textContent=next?diff:'Tomorrow 10:45 AM';
+   statusBadge.textContent=label+' • '+diff;
+   statusBadge.className='text-xs font-black px-2.5 py-1 rounded-full bg-slate-100 text-slate-600';
+ }
+ const orderBtn=document.getElementById('placeOrder');
+ if(orderBtn){orderBtn.disabled=!isCanteenOpenNow()||cart.length===0;orderBtn.classList.toggle('opacity-50',orderBtn.disabled);orderBtn.classList.toggle('cursor-not-allowed',orderBtn.disabled);}
+}
+function renderSpecialServices(){
+ const el=document.getElementById('specialServiceList'); if(!el)return;
+ if(!specialServiceWindows.length){el.innerHTML='<p class="text-sm text-slate-400">No extra opening time has been added for today.</p>';return;}
+ el.innerHTML=specialServiceWindows.map((w,i)=>`<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border rounded-xl p-3"><div><b>${w.name}</b><p class="text-sm text-slate-500">${formatHM(w.start)} – ${formatHM(w.end)} today</p></div><button type="button" onclick="removeSpecialService(${i})" class="px-3 py-2 rounded-lg bg-red-50 text-red-600 font-bold text-sm">Remove</button></div>`).join('');
+}
+function formatHM(hm){const [h,m]=hm.split(':').map(Number);const d=new Date();d.setHours(h,m,0,0);return d.toLocaleTimeString([], {hour:'numeric',minute:'2-digit'});}
+function removeSpecialService(i){specialServiceWindows.splice(i,1);renderSpecialServices();updateServiceStatus();}
+
+
+
+
+
+let owners = [
+ {id:1,name:'Main Canteen Owner',username:'owner',password:'owner123',active:true}
+];
+let notifications = [];
+let selectedFoodImage = '';
+
+function addNotification(title, body, token, targetUsername=''){
+ notifications.unshift({id:Date.now()+Math.random(),title,body,token,targetUsername,time:new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}),read:false});
+ renderNotifications();
+}
+function renderNotifications(){
+ const visible=notifications.filter(n=>!n.targetUsername || n.targetUsername===currentUser.username || currentRole==='admin');
+ const badge=document.getElementById('notificationBadge'), unread=visible.filter(n=>!n.read).length;
+ badge.textContent=unread; badge.classList.toggle('hidden',unread===0);
+ document.getElementById('notificationList').innerHTML=visible.length?visible.map(n=>`<div onclick="nread(${n.id})" class="p-4 border-b hover:bg-slate-50 ${n.read?'':'bg-orange-50'}"><div class="flex gap-3"><span class="w-9 h-9 rounded-full bg-emerald-100 text-emerald-600 grid place-items-center">${icon('check-circle')}</span><div><b>${n.title}</b><p class="text-sm text-slate-600">${n.body}</p><p class="text-[11px] text-slate-400 mt-1">${n.time}</p></div></div></div>`).join(''):'<div class="p-8 text-center text-slate-400">No notifications</div>';
+ lucide.createIcons();
+}
+function nread(id){const n=notifications.find(x=>x.id===id);if(n)n.read=true;renderNotifications();}
+function renderOwners(){
+ document.getElementById('ownersTable').innerHTML=owners.map(o=>`<div class="border rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3"><div><b>${o.name}</b><p class="text-xs text-slate-500">@${o.username} • ${o.active?'Active':'Disabled'}</p></div><button onclick="removeOwner(${o.id})" class="px-3 py-2 rounded-lg bg-red-50 text-red-600 font-bold text-sm">Remove Owner</button></div>`).join('');
+}
+function removeOwner(id){
+ if(owners.length<=1){alert('At least one shop owner must remain.');return;}
+ const o=owners.find(x=>x.id===id); if(!o)return;
+ if(confirm('Remove '+o.name+' as a shop owner?')){owners=owners.filter(x=>x.id!==id);renderOwners();}
+}
+function renderFoodImage(x){
+ return x.image ? `<img src="${x.image}" alt="${x.name}" class="w-full h-36 object-cover rounded-xl">` : `<div class="h-36 rounded-xl bg-gradient-to-br from-orange-50 to-amber-100 grid place-items-center text-6xl">${x.emoji||'🍽️'}</div>`;
+}
+
+
+let students = [
+ {id:1,name:'Demo Student',username:'student',password:'1234',className:'B.Com CA',active:true}
+];
+
+function renderStudents(){
+ const el=document.getElementById('studentsTable');
+ if(!el)return;
+ el.innerHTML=students.map(s=>`<div class="border rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+   <div>
+     <b>${s.name}</b>
+     <p class="text-xs text-slate-500">@${s.username} • ${s.className||'Student'} • ${s.active?'Active':'Disabled'}</p>
+   </div>
+   <button onclick="removeStudent(${s.id})" class="px-3 py-2 rounded-lg bg-red-50 text-red-600 font-bold text-sm">Remove Student</button>
+ </div>`).join('');
+}
+function removeStudent(id){
+ if(students.length<=1){alert('At least one student account must remain.');return;}
+ const s=students.find(x=>x.id===id);
+ if(!s)return;
+ if(confirm('Remove '+s.name+' from CampusBite?')){
+   students=students.filter(x=>x.id!==id);
+   renderStudents();
+ }
+}
+
+let loginRole='student', currentRole='', currentUser={username:'',name:''};
+function showOnly(id){
+ const allowed = {
+   studentView: ['student','owner','admin'],
+   kitchenView: ['owner','admin'],
+   ownerView: ['owner'],
+   adminView: ['admin'],
+   reportView: ['student','owner'],
+   adminReportsSection: ['admin']
+ };
+ if(currentRole && (!allowed[id] || !allowed[id].includes(currentRole))){
+   alert('This portal is not available for your account.');
+   return false;
+ }
+ ['studentView','kitchenView','ownerView','adminView','adminReportsSection'].forEach(x=>document.getElementById(x).classList.add('hidden'));
+ document.getElementById(id).classList.remove('hidden');
+ updatePortalNav();
+ return true;
+}
+function updatePortalNav(){
+ const role=currentRole;
+ const student=document.getElementById('studentTab'), kitchen=document.getElementById('vendorTab'), food=document.getElementById('foodMenuTab'), admin=document.getElementById('adminTab'), report=document.getElementById('reportTab');
+ [student,kitchen,food,admin].forEach(b=>{b.classList.remove('bg-orange-50','text-orange-600','bg-slate-900','text-white','opacity-50');});
+ const current=document.querySelector('#studentView:not(.hidden)')?'student':document.querySelector('#kitchenView:not(.hidden)')?'kitchen':document.querySelector('#adminView:not(.hidden)')?'admin':document.querySelector('#reportView:not(.hidden)')?'report':'owner';
+ const active={student:student,kitchen:kitchen,admin:admin,report:report}[current];
+ if(active){active.classList.add('bg-orange-50','text-orange-600');}
+ if(role==='student'){kitchen.classList.add('opacity-50');food.classList.add('opacity-50');admin.classList.add('opacity-50');}
+ if(role==='owner'){admin.classList.add('opacity-50');}
+}
+function renderOwner(){
+ const feeInput=document.getElementById('ownerParcelFee'); if(feeInput) feeInput.value=parcelFee;
+ const feeStatus=document.getElementById('parcelFeeStatus'); if(feeStatus) feeStatus.textContent='Current parcel charge: ₹'+parcelFee;
+ const stock=menu.reduce((a,x)=>a+(x.qty||0),0), low=menu.filter(x=>(x.qty||0)>0&&(x.qty||0)<=10).length;
+ document.getElementById('ownerOrders').textContent=orderHistory.length+orders.length;
+ document.getElementById('ownerStock').textContent=stock;
+ document.getElementById('ownerLow').textContent=low;
+ document.getElementById('ownerRevenue').textContent='₹'+orderHistory.filter(x=>x.status!=='Refunded').reduce((a,x)=>a+x.total,0);
+ document.getElementById('ownerMenu').innerHTML=menu.map(x=>`<div class="border rounded-xl p-3 flex flex-col lg:flex-row gap-3 lg:items-center justify-between">
+   <div class="flex items-center gap-3 min-w-0">
+     ${x.image?`<img src="${x.image}" class="w-14 h-14 rounded-xl object-cover">`:`<span class="w-14 h-14 rounded-xl bg-orange-50 grid place-items-center text-2xl">${x.emoji||'🍽️'}</span>`}
+     <div><b>${x.name}</b><p class="text-xs text-slate-500">${x.cat} • ₹${x.price} • ${x.time||'5 min'}</p></div>
+   </div>
+   <div class="flex flex-wrap items-center gap-2">
+     <span class="text-xs font-bold text-slate-500">Qty</span>
+     <input data-owner-stock="${x.id}" type="number" min="0" value="${x.qty||0}" class="w-20 border rounded-lg px-2 py-2">
+     <span class="text-xs font-bold ${(x.qty||0)<=10?'text-amber-600':'text-emerald-600'}">${(x.qty||0)<=0?'Out of Stock':(x.qty||0)<=10?'Low Stock':'In Stock'}</span>
+     <button onclick="editFood(${x.id})" class="px-3 py-2 rounded-lg bg-slate-100 font-bold text-sm">Edit</button>
+     <button onclick="removeFood(${x.id})" class="px-3 py-2 rounded-lg bg-red-50 text-red-600 font-bold text-sm">Remove</button>
+   </div>
+ </div>`).join('');
+ document.querySelectorAll('[data-owner-stock]').forEach(inp=>inp.onchange=()=>{
+   const x=menu.find(m=>m.id==inp.dataset.ownerStock);
+   if(x){x.qty=Math.max(0,+inp.value||0);renderOwner();renderAdmin();renderMenu();}
+ });
+
+}
+function renderReports(){
+ const el=document.getElementById('myReports'); if(!el)return;
+ const mine=reports.filter(r=>r.reporterUsername===currentUser.username);
+ if(!mine.length){el.innerHTML='<div class="py-10 text-center text-slate-400">No queries submitted yet.</div>';return;}
+ el.innerHTML=mine.slice().reverse().map(r=>`<div class="border rounded-xl p-3"><div class="flex items-start justify-between gap-2"><div><b>${r.subject}</b><p class="text-xs text-slate-500 mt-1">${r.type}${r.token?' • '+r.token:''}</p></div><span class="text-xs font-bold px-2 py-1 rounded-full ${r.status==='Resolved'?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-700'}">${r.status}</span></div><p class="text-sm text-slate-600 mt-2">${r.details}</p>${r.adminReply?`<div class="mt-3 rounded-xl bg-emerald-50 p-3"><b class="text-emerald-800">Admin response</b><p class="text-sm text-emerald-900 mt-1">${r.adminReply}</p></div>`:''}<p class="text-[11px] text-slate-400 mt-2">${r.time}</p></div>`).join('');
+}
+function renderAdminReports(){
+ const el=document.getElementById('adminReportsList'); if(!el)return;
+ const open=reports.filter(r=>r.status!=='Resolved').length;
+ document.getElementById('openReportsCount').textContent=open+' Open';
+ if(!reports.length){el.innerHTML='<div class="py-10 text-center text-slate-400">No reports submitted.</div>';return;}
+ el.innerHTML=reports.slice().reverse().map(r=>`<div class="border rounded-2xl p-4 ${r.status==='Resolved'?'bg-slate-50':''}">
+   <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3">
+    <div><div class="flex flex-wrap gap-2 items-center"><b>${r.subject}</b><span class="text-xs font-bold px-2 py-1 rounded-full ${r.status==='Resolved'?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-700'}">${r.status}</span><span class="text-xs font-bold px-2 py-1 rounded-full bg-slate-100">${r.role}</span></div>
+    <p class="text-xs text-slate-500 mt-1">Reported by <b>${r.reporterName}</b> (@${r.reporterUsername}) • ${r.type}${r.token?' • '+r.token:''} • ${r.time}</p>
+    <p class="text-sm text-slate-700 mt-3">${r.details}</p>${r.contact?`<p class="text-xs text-slate-500 mt-2">Contact: ${r.contact}</p>`:''}
+    ${r.adminReply?`<div class="mt-3 rounded-xl bg-emerald-50 p-3"><b class="text-emerald-800">Resolution</b><p class="text-sm text-emerald-900 mt-1">${r.adminReply}</p></div>`:''}</div>
+    ${r.status!=='Resolved'?`<div class="lg:w-80 shrink-0"><textarea id="reply-${r.id}" rows="3" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="Write how you solved the problem..."></textarea><button onclick="resolveReport(${r.id})" class="w-full mt-2 py-2.5 rounded-xl bg-emerald-600 text-white font-bold">Mark Solved & Notify</button></div>`:''}
+   </div>
+ </div>`).join('');
+}
+function openAdminReports(){if(currentRole!=='admin')return;showOnly('adminView');openAdminSection('reports');}
+function resolveReport(id){
+ const r=reports.find(x=>x.id===id); if(!r)return;
+ const input=document.getElementById('reply-'+id); const reply=(input?.value||'').trim();
+ if(!reply){alert('Please enter the solution or response before marking the report solved.');return;}
+ r.status='Resolved'; r.adminReply=reply; r.resolvedAt=new Date().toLocaleString(); r.resolvedBy='Admin';
+ addNotification('Report resolved',`Your report “${r.subject}” has been processed by Admin. ${reply}`,r.token,r.reporterUsername);
+ renderAdminReports();
+ if(r.reporterUsername===currentUser.username)renderReports();
+ alert('Report marked as solved. The reporter has been notified in the app.');
+}
+function openReports(){
+ if(currentRole!=='student'&&currentRole!=='owner'){alert('Help / Report is available for students and shop owners.');return;}
+ showOnly('reportView'); renderReports();
+}
+function login(){
+ const u=document.getElementById('loginUser').value.trim(), pw=document.getElementById('loginPass').value;
+ const creds={student:['student','1234'],owner:['owner','owner123'],admin:['admin','admin123']};
+ const studentMatch=students.find(s=>s.username===u && s.password===pw && s.active);
+ const validStudent=loginRole==='student' && !!studentMatch;
+ const validBuiltIn=loginRole!=='student' && u===creds[loginRole][0] && pw===creds[loginRole][1];
+ if(validStudent || validBuiltIn){
+   if(loginRole==='student') currentUser={username:studentMatch.username,name:studentMatch.name};
+   else if(loginRole==='owner'){ const om=owners.find(o=>o.username===u && o.password===pw && o.active); currentUser={username:om?.username||u,name:om?.name||'Shop Owner'}; }
+   else currentUser={username:u,name:'Admin'};
+   currentRole=loginRole; document.getElementById('loginView').classList.add('hidden'); document.getElementById('logoutBtn').classList.remove('hidden'); document.getElementById('roleBadge').classList.remove('hidden'); document.getElementById('notificationBtn').classList.remove('hidden');
+   // Strict role-based navigation: students never receive owner/admin controls.
+   document.getElementById('studentTab').classList.toggle('hidden',loginRole!=='student');
+   document.getElementById('vendorTab').classList.toggle('hidden',loginRole==='student');
+   document.getElementById('foodMenuTab').classList.toggle('hidden',loginRole==='student');
+   document.getElementById('adminTab').classList.toggle('hidden',loginRole!=='admin');
+   document.getElementById('reportTab').classList.toggle('hidden',!(loginRole==='student'||loginRole==='owner'));
+   if(loginRole==='student'){ showOnly('studentView'); renderMenu(); renderCart(); renderMyPurchases(); }
+   if(loginRole==='owner'){showOnly('ownerView');renderOwner();}
+   if(loginRole==='admin'){showOnly('adminView');openAdminSection('menu');}
+   updatePortalNav();
+ } else {document.getElementById('loginError').textContent='Invalid username or password.';document.getElementById('loginError').classList.remove('hidden');}
+}
+function selectLoginRole(role,btn){
+ loginRole=role;
+ ['loginStudent','loginOwner','loginAdmin'].forEach(id=>{
+   const b=document.getElementById(id);
+   b.classList.remove('bg-white','shadow-sm');
+   b.classList.add('text-slate-500');
+ });
+ btn.classList.add('bg-white','shadow-sm');
+ btn.classList.remove('text-slate-500');
+ document.getElementById('loginError').classList.add('hidden');
+ const labels={student:'Student Login',owner:'Shop Owner Login',admin:'Admin Login'};
+ document.querySelector('#loginForm button').textContent='Continue as '+labels[role];
+ document.getElementById('loginUser').value='';
+ document.getElementById('loginPass').value='';
+}
+
+document.querySelectorAll('input[name="pickupType"]').forEach(r=>r.addEventListener('change',renderCart));
+document.getElementById('saveParcelFee').onclick=()=>{
+ parcelFee=Math.max(0,Number(document.getElementById('ownerParcelFee').value)||0);
+ document.getElementById('ownerParcelFee').value=parcelFee;
+ document.getElementById('parcelFeeStatus').textContent='Saved. Students will see an extra ₹'+parcelFee+' when they choose Parcel.';
+ renderCart();
+};
+document.getElementById('loginBtn').onclick=login;
+document.getElementById('loginPass').onkeydown=e=>{if(e.key==='Enter')login()};
+document.getElementById('notificationBtn').onclick=()=>{document.getElementById('notificationPanel').classList.toggle('hidden');};
+document.getElementById('clearNotifications').onclick=()=>{notifications=[];renderNotifications();};
+document.getElementById('logoutBtn').onclick=()=>{currentRole='';document.getElementById('loginView').classList.remove('hidden');document.getElementById('logoutBtn').classList.add('hidden');document.getElementById('roleBadge').classList.add('hidden');document.getElementById('foodMenuTab').classList.add('hidden');document.getElementById('reportTab').classList.add('hidden');document.getElementById('kitchenMenuShortcut').classList.add('hidden');document.getElementById('notificationBtn').classList.add('hidden');document.getElementById('notificationPanel').classList.add('hidden');currentUser={username:'',name:''};showOnly('studentView')};
+document.getElementById('ownerAddFood').onclick=()=>{editingFoodId=null;document.getElementById('foodModalTitle').textContent='Add Food';
+selectedFoodImage='';
+document.getElementById('foodImage').value='';
+document.getElementById('foodImagePreview').removeAttribute('src');
+document.getElementById('foodImagePreview').classList.add('hidden');['foodName','foodPrice','foodStock','foodTime'].forEach(id=>document.getElementById(id).value='');document.getElementById('foodCat').value='Meals';document.getElementById('foodModal').classList.remove('hidden')};
+
+
+function openAdminSection(section){
+ if(currentRole!=='admin') return false;
+ const sections={menu:'adminMenuSection',history:'adminHistorySection',owners:'adminOwnersSection',students:'adminStudentsSection',service:'adminServiceSection',reports:'adminReportsSection'};
+ const btns={menu:'adminMenuBtn',history:'adminHistoryBtn',owners:'adminOwnersBtn',students:'adminStudentsBtn',service:'adminServiceBtn',reports:'adminReportsBtn'};
+ if(!sections[section]) section='menu';
+ // Always show exactly ONE admin section at a time.
+ Object.values(sections).forEach(id=>{
+   const el=document.getElementById(id);
+   if(el){ el.classList.add('hidden'); el.style.display='none'; }
+ });
+ const selected=document.getElementById(sections[section]);
+ if(selected){ selected.classList.remove('hidden'); selected.style.display='block'; }
+ document.querySelectorAll('.admin-section-btn').forEach(b=>{
+   b.classList.remove('bg-slate-900','text-white');
+   b.classList.add('bg-white','border');
+ });
+ const activeBtn=document.getElementById(btns[section]);
+ if(activeBtn){
+   activeBtn.classList.remove('bg-white','border');
+   activeBtn.classList.add('bg-slate-900','text-white');
+ }
+ if(section==='menu') renderAdmin();
+ if(section==='history') renderHistory();
+ if(section==='owners') renderOwners();
+ if(section==='students') renderStudents();
+ if(section==='service') renderSpecialServices();
+ if(section==='reports') renderAdminReports();
+ return true;
+}
+document.getElementById('foodMenuTab').onclick=()=>{
+ if(!currentRole)return;
+ if(currentRole==='owner'){showOnly('ownerView');renderOwner();}
+ else if(currentRole==='admin'){if(showOnly('adminView')) openAdminSection('menu');}
+ else {alert('Food Menu management is available to shop owners and administrators.');}
+};
+document.getElementById('reportTab').onclick=openReports;
+document.getElementById('adminTab').onclick=()=>{
+ if(!currentRole)return;
+ if(currentRole==='owner'){if(showOnly('ownerView'))renderOwner();}
+ else if(currentRole==='admin'){if(showOnly('adminView'))renderAdmin();}
+ else {alert('Shop Admin is available only for shop owners and administrators.');}
+};
+document.getElementById('adminServiceBtn').onclick=()=>openAdminSection('service');
+document.getElementById('adminReportsBtn').onclick=()=>openAdminSection('reports');
+document.getElementById('addSpecialServiceBtn').onclick=()=>{
+ const name=document.getElementById('specialServiceName').value.trim()||'Special Service';
+ const start=document.getElementById('specialServiceStart').value;
+ const end=document.getElementById('specialServiceEnd').value;
+ if(!start||!end||mins(end)<=mins(start)){alert('Please choose a valid start and end time.');return;}
+ specialServiceWindows.push({name,start,end,special:true});
+ specialServiceWindows.sort((a,b)=>mins(a.start)-mins(b.start));
+ renderSpecialServices(); updateServiceStatus();
+ alert(`${name} added for today: ${formatHM(start)} – ${formatHM(end)}.`);
+};
+document.getElementById('submitReport').onclick=()=>{
+ const type=document.getElementById('reportType').value, subject=document.getElementById('reportSubject').value.trim(), token=document.getElementById('reportToken').value.trim(), details=document.getElementById('reportDetails').value.trim(), contact=document.getElementById('reportContact').value.trim();
+ const status=document.getElementById('reportStatus');
+ if(!subject||!details){status.textContent='Please enter a subject and details.';status.className='text-sm text-center font-semibold text-red-600';return;}
+ reports.push({id:Date.now(),role:currentRole,type,subject,token,details,contact,status:'Open',reporterUsername:currentUser.username,reporterName:currentUser.name||currentUser.username,time:new Date().toLocaleString()});
+ ['reportSubject','reportToken','reportDetails','reportContact'].forEach(id=>document.getElementById(id).value='');
+ status.textContent='Query submitted successfully.'; status.className='text-sm text-center font-semibold text-emerald-600';
+ renderReports();
+};
+document.getElementById('adminMenuBtn').onclick=()=>openAdminSection('menu');
+
+document.getElementById('adminStudentsBtn').onclick=()=>openAdminSection('students');
+document.getElementById('addStudentBtn').onclick=()=>{
+ document.getElementById('studentModal').classList.remove('hidden');
+ ['studentName','studentUsername','studentPassword','studentClass'].forEach(id=>document.getElementById(id).value='');
+};
+document.getElementById('studentModalClose').onclick=()=>document.getElementById('studentModal').classList.add('hidden');
+document.getElementById('saveStudent').onclick=()=>{
+ const name=document.getElementById('studentName').value.trim();
+ const username=document.getElementById('studentUsername').value.trim();
+ const password=document.getElementById('studentPassword').value.trim();
+ const className=document.getElementById('studentClass').value.trim();
+ if(!name||!username||!password){alert('Please enter student name, username and password.');return;}
+ if(students.some(s=>s.username===username)){alert('Student username already exists.');return;}
+ students.push({id:Date.now(),name,username,password,className,active:true});
+ document.getElementById('studentModal').classList.add('hidden');
+ renderStudents();
+};
+document.getElementById('adminHistoryBtn').onclick=()=>openAdminSection('history');
+document.getElementById('adminOwnersBtn').onclick=()=>openAdminSection('owners');
+document.getElementById('addOwnerBtn').onclick=()=>document.getElementById('ownerModal').classList.remove('hidden');
+document.getElementById('ownerModalClose').onclick=()=>document.getElementById('ownerModal').classList.add('hidden');
+document.getElementById('saveOwner').onclick=()=>{const name=document.getElementById('ownerName').value.trim(),username=document.getElementById('ownerUsername').value.trim(),password=document.getElementById('ownerPassword').value.trim();if(!name||!username||!password){alert('Fill all owner details.');return;}if(owners.some(o=>o.username===username)){alert('Username already exists.');return;}owners.push({id:Date.now(),name,username,password,active:true});document.getElementById('ownerModal').classList.add('hidden');['ownerName','ownerUsername','ownerPassword'].forEach(id=>document.getElementById(id).value='');renderOwners();};
+document.getElementById('historySearch').oninput=renderHistory;
+document.getElementById('addFoodBtn').onclick=()=>{editingFoodId=null;document.getElementById('foodModalTitle').textContent='Add Food';
+selectedFoodImage='';
+document.getElementById('foodImage').value='';
+document.getElementById('foodImagePreview').removeAttribute('src');
+document.getElementById('foodImagePreview').classList.add('hidden');['foodName','foodPrice','foodStock','foodTime'].forEach(id=>document.getElementById(id).value='');document.getElementById('foodCat').value='Meals';document.getElementById('foodModal').classList.remove('hidden')};
+document.getElementById('foodModalClose').onclick=closeFoodModal;
+document.getElementById('foodImage').onchange=e=>{const file=e.target.files[0];if(!file)return;const r=new FileReader();r.onload=()=>{selectedFoodImage=r.result;const prev=document.getElementById('foodImagePreview');prev.src=selectedFoodImage;prev.classList.remove('hidden')};r.readAsDataURL(file)};
+document.getElementById('saveFood').onclick=()=>{
+ const name=document.getElementById('foodName').value.trim(), price=+document.getElementById('foodPrice').value, qty=Math.max(0,+document.getElementById('foodStock').value||0), time=document.getElementById('foodTime').value.trim()||'5 min', cat=document.getElementById('foodCat').value;
+ if(!name||!price){alert('Please enter food name and price.');return;}
+ if(editingFoodId){const x=menu.find(m=>m.id===editingFoodId);Object.assign(x,{name,price,qty,time,cat,image:selectedFoodImage,stock:qty<=10?'Low Stock':'In Stock'});}
+ else {menu.push({id:Date.now(),cat,name,price,time,qty,stock:qty<=10?'Low Stock':'In Stock',emoji:'🍽️',image:selectedFoodImage});}
+ closeFoodModal();selectedFoodImage='';renderAdmin();renderOwner();renderMenu();
+};
+
+renderMenu();renderCart();renderOrders();renderAdmin();renderStudents();renderNotifications();renderAdminReports();updateServiceStatus();lucide.createIcons();
+</script>
+<script>
+/* CampusBite Firebase live-data layer — no Firebase Storage required. */
+const firebaseConfig = {
+  apiKey: "AIzaSyA5iQqDsKXVlN7iYqVpOoiRifjejHxlRqE",
+  authDomain: "campus-bite-d350e.firebaseapp.com",
+  databaseURL: "https://campus-bite-d350e-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "campus-bite-d350e",
+  storageBucket: "campus-bite-d350e.firebasestorage.app",
+  messagingSenderId: "853723090799",
+  appId: "1:853723090799:web:06c07ba709b416d1dbe29a",
+  measurementId: "G-GYL0ZFW6CT"
+};
+if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+const fbdb = firebase.firestore();
+const fbauth = firebase.auth();
+let fbSecondary = null;
+const DEMO_ADMIN_EMAIL = 'admin@campusbite.app';
+const seedMenu = [
+  {id:'food_1',cat:'Meals',name:'South Indian Meals',price:80,time:'8 min',qty:35,stock:'In Stock',emoji:'🍛'},
+  {id:'food_2',cat:'Meals',name:'Veg Fried Rice',price:75,time:'7 min',qty:35,stock:'In Stock',emoji:'🍚'},
+  {id:'food_3',cat:'Meals',name:'Paneer Wrap',price:65,time:'5 min',qty:6,stock:'Low Stock',emoji:'🌯'},
+  {id:'food_4',cat:'Snacks',name:'Samosa (2 pcs)',price:30,time:'2 min',qty:35,stock:'In Stock',emoji:'🥟'},
+  {id:'food_5',cat:'Snacks',name:'Masala Sandwich',price:45,time:'4 min',qty:6,stock:'Low Stock',emoji:'🥪'},
+  {id:'food_6',cat:'Beverages',name:'Cold Coffee',price:50,time:'2 min',qty:35,stock:'In Stock',emoji:'🥤'},
+  {id:'food_7',cat:'Beverages',name:'Fresh Lime',price:30,time:'2 min',qty:35,stock:'In Stock',emoji:'🍋'},
+  {id:'food_8',cat:'Beverages',name:'Tea',price:15,time:'1 min',qty:35,stock:'In Stock',emoji:'☕'}
+];
+function fbEmail(username){ return String(username).trim().toLowerCase().replace(/\s+/g,'')+'@campusbite.app'; }
+function fbNow(){ return firebase.firestore.FieldValue.serverTimestamp(); }
+function safeTime(ts){ try{return ts?.toDate?ts.toDate().toLocaleString():String(ts||'');}catch(e){return '';}}
+async function seedIfNeeded(){
+  const snap=await fbdb.collection('menu').limit(1).get();
+  if(snap.empty){ const b=fbdb.batch(); seedMenu.forEach(x=>b.set(fbdb.collection('menu').doc(x.id),x)); await b.commit(); }
+  const settings=await fbdb.collection('settings').doc('main').get();
+  if(!settings.exists) await fbdb.collection('settings').doc('main').set({parcelFee:5,specialServiceWindows:[]});
+}
+function stopLive(){ if(window._fbUnsubs){window._fbUnsubs.forEach(fn=>{try{fn();}catch(e){}});window._fbUnsubs=[];} }
+function startLive(){
+  stopLive(); window._fbUnsubs=[];
+  const push=(q,cb)=>window._fbUnsubs.push(q.onSnapshot(s=>cb(s),e=>console.error(e)));
+  push(fbdb.collection('menu'),s=>{menu=s.docs.map(d=>({id:d.id,...d.data()}));renderMenu();renderAdmin();renderOwner();});
+  push(fbdb.collection('orders'),s=>{const all=s.docs.map(d=>({id:d.id,...d.data()}));orders=all.filter(o=>o.status==='Preparing'||o.status==='Ready').sort((a,b)=>(b.createdAt?.seconds||0)-(a.createdAt?.seconds||0));orderHistory=all.sort((a,b)=>(b.createdAt?.seconds||0)-(a.createdAt?.seconds||0));myPurchases=currentUser?.username?all.filter(o=>o.studentUsername===currentUser.username):[];renderOrders();renderHistory();renderMyPurchases();renderOwner();});
+  push(fbdb.collection('students'),s=>{students=s.docs.map(d=>({id:d.id,...d.data()}));renderStudents();});
+  push(fbdb.collection('owners'),s=>{owners=s.docs.map(d=>({id:d.id,...d.data()}));renderOwners();renderOwner();});
+  push(fbdb.collection('reports'),s=>{reports=s.docs.map(d=>({id:d.id,...d.data()}));renderReports();renderAdminReports();});
+  push(fbdb.collection('reviews'),s=>{reviews=s.docs.map(d=>({id:d.id,...d.data()}));renderMyPurchases();renderMenu();});
+  push(fbdb.collection('notifications'),s=>{notifications=s.docs.map(d=>({id:d.id,...d.data()})).filter(n=>n.targetUsername===currentUser?.username).sort((a,b)=>(b.createdAt?.seconds||0)-(a.createdAt?.seconds||0));renderNotifications();});
+  push(fbdb.collection('settings').doc('main'),d=>{const x=d.data()||{};parcelFee=Number(x.parcelFee??5);specialServiceWindows=Array.isArray(x.specialServiceWindows)?x.specialServiceWindows:[];renderSpecialServices();renderCart();updateServiceStatus();});
+}
+async function liveLogin(){
+  const u=document.getElementById('loginUser').value.trim(), pw=document.getElementById('loginPass').value;
+  if(!u||!pw)return;
+  try{
+    const cred=await fbauth.signInWithEmailAndPassword(fbEmail(u),pw);
+    const uid=cred.user.uid;
+    let role=loginRole;
+    const profile=await fbdb.collection('users').doc(uid).get();
+    if(profile.exists && profile.data().role) role=profile.data().role;
+    if(u.toLowerCase()==='admin') role='admin';
+    if(role==='student'){
+      const st=await fbdb.collection('students').where('username','==',u).limit(1).get();
+      currentUser={username:u,name:st.empty?(cred.user.displayName||u):st.docs[0].data().name,uid};
+    }else if(role==='owner'){
+      const ow=await fbdb.collection('owners').where('username','==',u).limit(1).get();
+      currentUser={username:u,name:ow.empty?'Shop Owner':ow.docs[0].data().name,uid};
+    }else currentUser={username:u,name:'Admin',uid};
+    currentRole=role;
+    await fbdb.collection('users').doc(uid).set({username:u,role,name:currentUser.name,updatedAt:fbNow()},{merge:true});
+    document.getElementById('loginView').classList.add('hidden'); document.getElementById('logoutBtn').classList.remove('hidden'); document.getElementById('roleBadge').classList.remove('hidden'); document.getElementById('notificationBtn').classList.remove('hidden');
+    document.getElementById('studentTab').classList.toggle('hidden',role!=='student'); document.getElementById('vendorTab').classList.toggle('hidden',role==='student'); document.getElementById('foodMenuTab').classList.toggle('hidden',role==='student'); document.getElementById('adminTab').classList.toggle('hidden',role!=='admin'); document.getElementById('reportTab').classList.toggle('hidden',!(role==='student'||role==='owner'));
+    if(role==='student'){showOnly('studentView');renderMenu();renderMyPurchases();}
+    if(role==='owner'){showOnly('ownerView');renderOwner();}
+    if(role==='admin'){showOnly('adminView');openAdminSection('menu');}
+    updatePortalNav(); startLive();
+  }catch(e){console.error(e);document.getElementById('loginError').textContent='Login failed. Make sure the account exists in Firebase Authentication.';document.getElementById('loginError').classList.remove('hidden');}
+}
+async function createAuthUser(username,password,role,name){
+  if(password.length<6) throw new Error('Password must be at least 6 characters.');
+  if(!fbSecondary) fbSecondary=firebase.initializeApp(firebaseConfig,'campusbiteSecondary');
+  const sa=firebase.auth(fbSecondary); const cred=await sa.createUserWithEmailAndPassword(fbEmail(username),password); await sa.signOut();
+  await fbdb.collection('users').doc(cred.user.uid).set({username,role,name,createdAt:fbNow()}); return cred.user.uid;
+}
+async function liveAddStudent(){
+  const name=document.getElementById('studentName').value.trim(),username=document.getElementById('studentUsername').value.trim(),password=document.getElementById('studentPassword').value.trim(),className=document.getElementById('studentClass').value.trim();
+  if(!name||!username||!password)return alert('Please enter student name, username and password.');
+  try{const existing=await fbdb.collection('students').where('username','==',username).limit(1).get();if(!existing.empty)return alert('Student username already exists.');const uid=await createAuthUser(username,password,'student',name);await fbdb.collection('students').doc(uid).set({name,username,className,active:true,uid,createdAt:fbNow()});document.getElementById('studentModal').classList.add('hidden');alert('Student added. They can now log in from another device.');}catch(e){alert(e.message||'Could not add student.');}
+}
+async function liveAddOwner(){
+  const name=document.getElementById('ownerName').value.trim(),username=document.getElementById('ownerUsername').value.trim(),password=document.getElementById('ownerPassword').value.trim();
+  if(!name||!username||!password)return alert('Fill all owner details.');
+  try{const existing=await fbdb.collection('owners').where('username','==',username).limit(1).get();if(!existing.empty)return alert('Username already exists.');const uid=await createAuthUser(username,password,'owner',name);await fbdb.collection('owners').doc(uid).set({name,username,active:true,uid,createdAt:fbNow()});document.getElementById('ownerModal').classList.add('hidden');['ownerName','ownerUsername','ownerPassword'].forEach(id=>document.getElementById(id).value='');alert('Shop owner added.');}catch(e){alert(e.message||'Could not add owner.');}
+}
+async function liveSaveFood(){
+ const name=document.getElementById('foodName').value.trim(),price=+document.getElementById('foodPrice').value,qty=Math.max(0,+document.getElementById('foodStock').value||0),time=document.getElementById('foodTime').value.trim()||'5 min',cat=document.getElementById('foodCat').value,image=document.getElementById('foodImage').value.trim();
+ if(!name||!price)return alert('Please enter food name and price.');
+ const data={cat,name,price,qty,time,stock:qty<=0?'Out of Stock':qty<=10?'Low Stock':'In Stock',emoji:'🍽️',image,updatedAt:fbNow()};
+ const id=editingFoodId?String(editingFoodId):('food_'+Date.now()); await fbdb.collection('menu').doc(id).set(data,{merge:true}); closeFoodModal();renderMenu();renderAdmin();renderOwner();
+}
+window.removeFood=async function(id){if(!confirm('Remove this food?'))return;await fbdb.collection('menu').doc(String(id)).delete();};
+window.editFood=editFood;
+window.refundOrder=async function(token){if(currentRole!=='owner'&&currentRole!=='admin')return;const snap=await fbdb.collection('orders').where('token','==',token).limit(1).get();if(snap.empty)return;const ref=snap.docs[0].ref;await ref.update({status:'Refunded',refundStatus:'Refund initiated',refundedAt:fbNow(),refundedBy:currentUser.username});const o=snap.docs[0].data();if(o.studentUsername)await fbdb.collection('notifications').add({title:'Refund initiated',body:`Order ${token} was cancelled and refund initiated by the canteen.`,token,targetUsername:o.studentUsername,createdAt:fbNow(),read:false});};
+window.ready=async function(i){const o=orders[i];if(!o)return;const counter=document.getElementById('counter-'+i)?.value||'Counter 2';await fbdb.collection('orders').doc(o.id).update({status:'Ready',counter,readyAt:fbNow()});if(o.studentUsername)await fbdb.collection('notifications').add({title:'Your food is ready!',body:`Order ${o.token} is ready for pickup at ${counter} — Express Lane.`,token:o.token,targetUsername:o.studentUsername,createdAt:fbNow(),read:false});};
+async function livePlaceOrder(){
+ if(!isCanteenOpenNow())return alert('The canteen is currently closed. Please order during a regular or special opening time.'); if(!cart.length)return;
+ const payment=document.querySelector('input[name="pay"]:checked')?.value==='upi'?'UPI / Net Banking':'Campus Wallet',pickupType=getPickupType(),extraFee=getCurrentExtraFee();
+ const items=cart.map(x=>`${x.qty} × ${x.name}`).join(' + '),subtotal=cart.reduce((a,b)=>a+b.price*b.qty,0),total=subtotal+extraFee,token='#CB-'+Date.now().toString().slice(-6);
+ const batch=fbdb.batch();cart.forEach(c=>{const current=menu.find(m=>String(m.id)===String(c.id)); batch.update(fbdb.collection('menu').doc(String(c.id)),{qty:Math.max(0,(current?.qty||0)-c.qty)});});
+ const orderRef=fbdb.collection('orders').doc(); batch.set(orderRef,{token,studentUsername:currentUser.username,studentName:currentUser.name,items,total,subtotal,payment,status:'Preparing',pickupType,pickupLabel:pickupType==='parcel'?'Parcel':'Dine-in',extraFee,createdAt:fbNow()});
+ await batch.commit(); closeCart(); document.getElementById('tokenModal').classList.remove('hidden'); cart=[]; renderCart();
+}
+async function liveSubmitReport(){
+ const type=document.getElementById('reportType').value,subject=document.getElementById('reportSubject').value.trim(),token=document.getElementById('reportToken').value.trim(),details=document.getElementById('reportDetails').value.trim(),contact=document.getElementById('reportContact').value.trim(); if(!subject||!details)return alert('Please enter a subject and details.');
+ await fbdb.collection('reports').add({role:currentRole,type,subject,token,details,contact,status:'Open',reporterUsername:currentUser.username,reporterName:currentUser.name,time:new Date().toLocaleString(),createdAt:fbNow()}); ['reportSubject','reportToken','reportDetails','reportContact'].forEach(id=>document.getElementById(id).value='');document.getElementById('reportStatus').textContent='Query submitted successfully.';renderReports();
+}
+async function liveResolveReport(id){
+ const r=reports.find(x=>String(x.id)===String(id)); if(!r)return;const reply=prompt('Enter the solution / response for the reporter:','Your issue has been processed and solved.');if(reply===null||!reply.trim())return;await fbdb.collection('reports').doc(String(id)).update({status:'Resolved',adminReply:reply.trim(),resolvedAt:fbNow(),resolvedBy:currentUser.username});await fbdb.collection('notifications').add({title:'Report resolved',body:`Your report “${r.subject}” has been processed by Admin. ${reply.trim()}`,token:r.token||'',targetUsername:r.reporterUsername,createdAt:fbNow(),read:false});}
+async function liveSetParcelFee(){parcelFee=Math.max(0,Number(document.getElementById('ownerParcelFee').value)||0);await fbdb.collection('settings').doc('main').set({parcelFee},{merge:true});document.getElementById('parcelFeeStatus').textContent='Saved live. Students on other devices will see the updated parcel charge.';}
+async function liveAddSpecial(){const name=document.getElementById('specialServiceName').value.trim()||'Special Service',start=document.getElementById('specialServiceStart').value,end=document.getElementById('specialServiceEnd').value;if(!start||!end||mins(end)<=mins(start))return alert('Please choose a valid start and end time.');const next=[...specialServiceWindows,{name,start,end,special:true}].sort((a,b)=>mins(a.start)-mins(b.start));await fbdb.collection('settings').doc('main').set({specialServiceWindows:next},{merge:true});}
+window.removeSpecialService=async function(i){const next=specialServiceWindows.filter((_,idx)=>idx!==i);await fbdb.collection('settings').doc('main').set({specialServiceWindows:next},{merge:true});};
+async function liveSubmitReview(){const idx=+document.getElementById('reviewOrderIndex').value,o=myPurchases[idx];if(!o||selectedReviewStars<1)return alert('Please select a rating from 1 to 5 stars.');const exists=await fbdb.collection('reviews').where('token','==',o.token).where('studentUsername','==',currentUser.username).limit(1).get();if(!exists.empty)return alert('You have already reviewed this order.');await fbdb.collection('reviews').add({token:o.token,studentUsername:currentUser.username,studentName:currentUser.name,stars:selectedReviewStars,comment:document.getElementById('reviewComment').value.trim(),createdAt:fbNow()});closeReview();alert('Thank you! Your food review has been submitted.');}
+async function liveLogout(){stopLive();await fbauth.signOut();currentRole='';currentUser={username:'',name:''};document.getElementById('loginView').classList.remove('hidden');document.getElementById('logoutBtn').classList.add('hidden');document.getElementById('roleBadge').classList.add('hidden');document.getElementById('notificationBtn').classList.add('hidden');document.getElementById('notificationPanel').classList.add('hidden');}
+// Replace local-only actions with Firebase-backed actions.
+document.getElementById('loginBtn').onclick=liveLogin;
+document.getElementById('saveStudent').onclick=liveAddStudent;
+document.getElementById('saveOwner').onclick=liveAddOwner;
+document.getElementById('saveFood').onclick=liveSaveFood;
+document.getElementById('placeOrder').onclick=livePlaceOrder;
+document.getElementById('submitReport').onclick=liveSubmitReport;
+document.getElementById('submitReview').onclick=liveSubmitReview;
+document.getElementById('saveParcelFee').onclick=liveSetParcelFee;
+document.getElementById('addSpecialServiceBtn').onclick=liveAddSpecial;
+document.getElementById('logoutBtn').onclick=liveLogout;
+const oldResolve=window.resolveReport; window.resolveReport=liveResolveReport;
+// Patch inline-dependent report resolver by replacing function reference used by onclick markup.
+window.resolveReport=liveResolveReport;
+(async()=>{try{await seedIfNeeded();startLive();}catch(e){console.error('Firebase init:',e);}})();
+</script>
+</body>
+</html>

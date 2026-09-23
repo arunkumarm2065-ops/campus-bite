@@ -1,0 +1,14 @@
+CampusBite GitHub repository files
+
+Upload these files to the ROOT of your GitHub repository:
+- index.html
+- README.md
+- firebase.json
+- .gitignore
+
+For GitHub Pages, index.html is the main website file.
+For Firebase Hosting, firebase.json is included.
+
+IMPORTANT:
+- Do not upload passwords or private keys.
+- Firebase Web API configuration in index.html is normal for a Firebase web app; protect data with Firestore Security Rules.
